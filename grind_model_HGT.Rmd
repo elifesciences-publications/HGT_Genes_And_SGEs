@@ -6,41 +6,24 @@
 ####################
 ####################
 
-source("grind.r")                    # grind.r made by R.J. de Boer: http://theory.bio.uu.nl/rdb/grind.html
+source("~/../Dropbox/Grind/grind.r")                     # grind.r made by R.J. de Boer: 
 library(tidyverse)                   # libraries inclusions (installed with install.packages("name"))
 library(ggplot2)
-
-library(dplyr)
 library(grid)
-library(gridExtra)
-library(scales)
-library(ggrepel)
-library(RColorBrewer)
 
 
-# BELOW IS THE ODE-MODEL DEFINITION AS USED IN THE MAIN TEXT:
+BELOW IS THE ODE-MODEL DEFINITION AS USED IN THE MAIN TEXT:
 model <- function(t, state, parms) {
   with(as.list(c(state,parms)), {
-    
+
     phi <- (1+b-c*h)*C + (1-c*h)*N
-    dC <- (1+b-c*h)*C - l*C + h*N*C - phi*C 
+    dC <- (1+b-c*h)*C - l*C + h*N*C - phi*C
     dN <- (1-c*h)*N + l*C - h*N*C - phi*N
-    
+
     return(list(c(dC, dN)))
   })
-}  
+}
 
-# BELOW IS THE ODE-MODEL DEFINITION FOR AN ALTERNATIVE COSTS ASSUMPTION (see supplementary materials):
-# alt_model <- function(t, state, parms) {
-#   with(as.list(c(state,parms)), {
-#     
-#     phi <- (1+b-c*h*N)*C + (1-c*h*C)*N
-#     dC <- (1+b-c*h*N)*C - l*C + h*N*C - phi*C 
-#     dN <- (1-c*h*C)*N + l*C - h*N*C - phi*N
-#     
-#     return(list(c(dC, dN)))
-#   })
-# }  
 ``` 
 
 ```{r Gene classes, echo=FALSE}
@@ -49,36 +32,55 @@ model <- function(t, state, parms) {
 ###########################################################
 alldat<-data.frame()   # creates emtpy data frame
 
-c = 0.2
+c = 0.3
 l = 0.02
 
-bvals = seq(-0.02,0.10,by=0.005)
-hvals = seq(0.0000,0.150,by=0.005)
+bvals = c(-0.01,0.0,0.005,0.01,0.02,0.04,0.08)
+hvals = seq(0.0000,0.05,by=0.001)
 
 for(bloop in bvals) # loop over values of b
 {
     for(hloop in hvals) # loop over values of h
     {
       p <- c(h=hloop, l=l, c=c, b=bloop)     # p is a named vector of parameters
-      s <- c(C=0.99,N=0.1)                    # s is the intial state vector
+      s <- c(C=0.999,N=0.1)                    # s is the intial state vector
       f<- newton()                           # find equilibrium (using the Newton-Raphson method)
       cnow=f["C"]                            # store found C
       nnow=f["N"]                            # store found N         
-      phi <- (1+bloop-c*hloop)*cnow + (1-c*hloop)*nnow # calculate get phi for this iteration
-      out <- cbind(C=cnow,N=nnow,h=hloop,b=as.numeric(bloop),phi=phi)
+      phi <- (1+bloop-c*hloop)*cnow + (1-c*hloop)*nnow                    # calculate get phi for this iteration
+      phi_alt <- (1+bloop-c*hloop*nnow)*cnow + (1-c*hloop*cnow)*nnow      # phi for alternative costs (per interaction)
+      phi_alt2 <- (1+bloop-c*hloop*cnow)*cnow + (1-c*hloop*cnow)*nnow      # phi for alternative costs (per interaction)
+      out <- cbind(C=cnow,N=nnow,h=hloop,b=as.numeric(bloop),phi=phi,phi_alt=phi_alt,phi_alt2=phi_alt2)
       alldat <- rbind(alldat,out)
     }
 }
   
 # Plot all the data. Will give the 5 gene classes (also with the alt_model). 
-alldat %>%
-  ggplot(aes(x=h,y=phi)) +
-  geom_line(col="#00AA00",lwd=1)+
-  guides(col=F)+
-  xlim(0,0.1)+
+main <- alldat %>%
+  ggplot(aes(grp=b,x=h,y=phi)) +
+  ggtitle("Categories for model from main text (cost = c*h)")+
+  geom_line(aes(col=as.factor(b)),size=1.5)+
   geom_hline(yintercept = 1)+
-  facet_wrap(~b,scales="free_y")+
-  theme_bw()        
+  facet_wrap(~b,nrow=1)+
+  theme_bw()    
+
+alt1 <- alldat %>%
+  ggplot(aes(grp=b,x=h,y=phi_alt)) +
+  ggtitle("Categories (unrescuable or rescuable genes) for cost at interaction (cost = c*h*[other]")+
+  geom_line(aes(col=as.factor(b)),size=1.5)+
+  geom_hline(yintercept = 1)+
+  facet_wrap(~b,nrow=1)+
+  theme_bw() 
+
+alt2 <- alldat %>%
+  ggplot(aes(grp=b,x=h,y=phi_alt2)) +
+  ggtitle("Categories assuming cost scale with amount of donor DNA (cost = c*h*Donor)")+
+  geom_line(aes(col=as.factor(b)),size=1.5)+
+  geom_hline(yintercept = 1)+
+  facet_wrap(~b,nrow=1)+
+  theme_bw() 
+
+grid.arrange(main,alt2,alt1) 
 
   
 ```
