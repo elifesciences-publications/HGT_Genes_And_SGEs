@@ -1,0 +1,137 @@
+```{r setup, include=FALSE}
+
+####################
+####################
+##MODEL DEFINITION##
+####################
+####################
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) # PS Doesn't work when sourced from outside of rstudio
+
+source("./grind.r")   
+library(tidyverse)                   # libraries inclusions (installed with install.packages("name"))
+library(ggplot2)
+library(dplyr)
+library(grid)
+library(gridExtra)
+library(scales)
+library(ggrepel)
+library(RColorBrewer)
+
+
+# BELOW IS THE ODE-MODEL DEFINITION.:
+model <- function(t, state, parms) {
+  with(as.list(c(state,parms)), {
+    
+    phi <- (1+b-w*h)*Cp + (1-w*h)*Np + (1+b)*C + (1)*N
+    
+    dCp <- (1+b-w*h)*Cp - l*Cp + h*Np*Cp + h*Np*C - phi*Cp 
+    dNp <- (1-w*h)*Np + l*Cp - h*Np*Cp - h*Np*C - phi*Np
+    
+    dC <- (1+b)*C - l*C - phi*C 
+    dN <- (1)*N + l*C - phi*N
+    
+    
+    
+    return(list(c(dCp, dNp, dC, dN)))
+  })
+}  
+``` 
+
+
+``````{r Figure_Allee_Effect, echo=FALSE}
+###########################################################
+###########################################################
+alldat<-data.frame()   # creates emtpy data frame
+trajectory = 1
+for (Dinv in seq(0.0,0.60,0.1))
+{  
+  for (Ainv in seq(0.0,0.60,0.1))
+  {  
+    
+      for (bloop in c(0.0175,0.025))
+      {
+          for(wloop in seq(0.2,0.2,by=0.010))
+          {
+            for(hloop in seq(0.02,0.02,by=0.001))
+            {
+            b =  bloop
+            w = wloop
+            l = 0.02
+            h=hloop
+            
+            crit1 = min(l/(b+h),1)
+            crit2 = b*(1-l/(b+h))/h
+            phistar = (1+b-w*h)*(1-l/(b+h)) + (1-w*h)*(l/(b))
+            cat('.')
+            p <- c(w=w,l=l,h=h,b=b)
+           
+            
+            Aset = max(min(l/(b),1),0)
+            Dset = min(max(1-l/b,0),1)
+            
+           
+            
+            s<-c(Cp=Dinv,Np=Ainv,C=Dset,N=Aset)
+            f<-run(30000,tstep=10,timeplot=F,table=T)
+            Dplus=f["Cp"]                            # store found C
+            Aplus=f["Np"]
+            attractor = 1
+            if(tail(Dplus,1)>0.01) attractor = 2 
+            C=f["C"]                            # store found C
+            N=f["N"]   
+            alldat <- rbind(alldat,data.frame(Dplus=Dplus,Aplus=Aplus,C=C,N=N,crit1=crit1,crit2=crit2,w=wloop,b=bloop,h=hloop,test="maintainable",time=f$time,Dinv=Dinv,Ainv=Ainv,trajectory=trajectory,attractor=attractor))
+            trajectory = trajectory + 1
+            }    
+        }
+      }
+  }
+          cat('\n')    
+
+}
+
+head(alldat %>% filter(b %in% c(0.04)) )
+
+
+alldat2<-alldat %>% filter(b %in% c(0.018))
+
+alldat2<-alldat 
+top <- alldat2 %>% 
+  ggplot(aes(x=Cp,y=Np,group=trajectory)) +
+  geom_path(data=alldat2 %>% filter(time%in%c(0,1:1000,10000)), aes(col=as.factor(attractor)),lwd=1.0,alpha=0.25) +
+  
+  geom_point(size=3,pch=21,aes(fill=as.factor(attractor)),data=alldat2 %>% group_by(trajectory) %>% filter(time==min(time))) +
+  geom_point(size=5,pch=22,aes(fill=as.factor(attractor)),data=alldat2 %>% group_by(trajectory) %>% filter(trajectory%in% c(10,11)) %>% filter(time==max(time))) +
+  geom_path(data=alldat2 %>% filter(time%in%c(0,1:1000,10000)) %>% filter(trajectory%in% c(10,11,40,41)), arrow=arrow(),lwd=1.50,alpha=1.00) +
+  theme_bw() +
+  guides(fill=F,col=F)+
+  facet_wrap(~b,nrow=1)
+
+top
+
+bot <-alldat2 %>% filter(trajectory %in% c(10,11)) %>%
+  ggplot(aes(x=time,y=Np,group=trajectory)) +
+  geom_line(col="purple",lwd=1)+
+  geom_line(aes(y=Cp),col="green",lwd=1)+
+  geom_line(aes(y=C),col="green",lty=2,lwd=1)+
+  geom_line(aes(y=N),col="purple",lty=2,lwd=1)+
+  theme_bw() +
+  xlim(0,5000)+
+  guides(fill=F,col=F)+
+  facet_wrap(~b,nrow=1)
+
+bot2 <-alldat2 %>% filter(trajectory %in% c(40,41)) %>%
+  ggplot(aes(x=time,y=Np,group=trajectory)) +
+  geom_line(col="purple",lwd=1)+
+  geom_line(aes(y=Cp),col="green",lwd=1)+
+  geom_line(aes(y=C),col="green",lty=2,lwd=1)+
+  geom_line(aes(y=N),col="purple",lty=2,lwd=1)+
+  theme_bw() +
+    xlim(0,5000)+
+
+  guides(fill=F,col=F)+
+  facet_wrap(~b,nrow=1)
+
+grid.arrange(top,bot,bot2)
+
+```
