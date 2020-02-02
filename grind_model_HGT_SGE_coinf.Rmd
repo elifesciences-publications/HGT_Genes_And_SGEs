@@ -1,0 +1,100 @@
+```{r setup, include=FALSE}
+
+####################
+####################
+##MODEL DEFINITION##
+####################
+####################
+
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) # PS Doesn't work when sourced from outside of rstudio
+
+source("./grind.r")                     # grind.r made by R.J. de Boer: 
+library(tidyverse)                      # libraries inclusions (installed with install.packages("name"))
+library(ggplot2)
+library(ggrepel)
+library(grid)
+
+
+#BELOW IS THE ODE-MODEL DEFINITION FOR CARRIERS AND NON-CARRIERS INFECTED BY SGES:
+model <- function(t, state, parms) {
+  with(as.list(c(state,parms)), {
+
+    phi <- y*((1+b-c*h)*C + (1-c*h)*N + (1-B-c*h)*P + (1+b-B-c*h)*D)
+    
+    dN <- y*(1-c*h)*N   + l*C + l*P - i*N - h*N*(C+P+D) - phi*N
+    dC <- y*(1+b-c*h)*C - l*C + l*D + h*(N*C + 0.5*N*D - C*P - C*D) - phi*C
+    dP <- y*(1-B-c*h)*P + l*D - l*P + i*N +h*(N*P+0.5*N*D-C*P-P*D) - phi*P #infected "non-carrier"
+    dD <- y*(1+b-B-c*h)*D - l*D*2 + h*(C*P+C*D+P*C+P*D) - phi*D #infected carrier
+return(list(c(dN, dC,dP,dD)))
+  })
+}
+
+
+
+``` 
+
+```{r test}
+#################################################################################
+### MAKING A PLOT WITH A VARIETY OF REPRODUCTION-TIMESCALES (gamma) AND SGES ####
+#################################################################################
+phi = data.frame()
+
+for(Bl in c(0.001,0.01,0.02,0.03,0.040,0.05))
+{
+  for(yl in c(0.1,0.25,0.5,1.0))
+  {
+    for(hl in seq(0.000,0.10,by=0.01))
+    {
+      p <- c(y=yl,l=0.02,b=0.030,B=Bl,c=0.1,h=hl,i=0.000)
+      s <- c(N=0.25,C=0.25,P=0.0001,D=0.0001)     
+      state<-run(tmax=100000,tstep=10000,main=hl,timeplot=F)
+      #state <- newton(s)
+      cat(".")
+      C<-state["C"]
+      N<-state["N"]
+      D<-state["D"]
+      P<-state["P"]
+      b<-p["b"]
+      c<-p["c"]
+      h<-p["h"]
+      B<-p["B"]
+      y<-p["y"]
+      
+      phi<-rbind(phi,data.frame(nosge=0,B=paste("SGE penalty: ",Bl),yval=y,y=paste("Timescale reproduction: ", ... =     yl),N=N,C=C,P=P,D=D,phi=(y*((1+b-c*h)*C + (1-c*h)*N + (1-B-c*h)*P + (1+b-B-c*h)*D)),h=hl))
+      
+      s <- c(N=0.25,C=0.25,P=0.00,D=0.00)     
+      state<-run(tmax=100000,tstep=10000,main=hl,timeplot=F)
+      #state <- newton(s)
+      cat(".")
+      C<-state["C"]
+      N<-state["N"]
+      D<-state["D"]
+      P<-state["P"]
+      b<-p["b"]
+      c<-p["c"]
+      h<-p["h"]
+      B<-p["B"]
+      y<-p["y"]
+      
+      phi<-rbind(phi,data.frame(nosge=1,B=paste("SGE penalty: ",Bl),yval=y,y=paste("Timescale reproduction: ", ... =     yl),N=N,C=C,P=P,D=D,phi=(y*((1+b-c*h)*C + (1-c*h)*N + (1-B-c*h)*P + (1+b-B-c*h)*D)),h=hl))
+    }
+    cat(",\n")
+  }
+  cat(">>>\n\n")
+}
+
+data <- merge(phi,phi %>% group_by(B,y) %>% filter(nosge==0) %>% filter(phi == max(phi)) %>% mutate(h_opt=h)%>%mutate(phi_opt=h),all=T)
+
+data %>% ggplot(aes(x=y,y=B,grp(B,y),fill=max(phi))) + geom_tile() + theme_bw()
+
+data %>% ggplot(aes(x=h,y=phi/yval,lty=as.factor(nosge))) + geom_line(size=1) +coord_cartesian(ylim=c(0.995,1.035)) + theme_bw() + facet_grid(y~B) + xlab("HGT-rate") + ylab("Growth rate") + scale_fill_manual(values=c("#d1e400","#cd3333"))+ scale_color_manual(values=c("#d1e400","#cd3333")) + ggtitle("HGT of gene and SGE (4-variable ODE model)") + geom_vline(aes(xintercept = h_opt)) + geom_label(y=1.034,x=0.054,size=3,data=data%>%filter(!is.na(h_opt)),fill="#cd3333",col="black",aes(label=paste("SGE freq in optimal HGT-rate ", round(P+D,3)))) +
+  geom_label(y=1.029,x=0.054,size=3,data=data%>%filter(!is.na(h_opt)),fill="#d1e400",col="black",aes(label=paste("Gene freq in optimal HGT-rate ", round(C+D,3)))) + guides(fill=F,col=F)
+
+p <- c(y=0.1,l=0.02,b=0.03,B=0.030,c=0.1,h=0.0255,i=0.0)
+s <- c(N=0.25,C=0.25,P=0.01,D=0.01)    
+#state<-run(tmax=100000,tstep=100,main=0.029,timeplot=T,ymax=0.01)
+
+  
+```
+
